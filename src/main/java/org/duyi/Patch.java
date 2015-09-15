@@ -5,30 +5,23 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStreamReader;
 import java.net.UnknownHostException;
-import com.mongodb.BasicDBObject;
-import com.mongodb.DB;
-import com.mongodb.DBCollection;
-import com.mongodb.DBCursor;
-import com.mongodb.Mongo;
-import com.mongodb.MongoException;
+
+import com.mongodb.*;
+import com.mongodb.client.FindIterable;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
+import com.mongodb.client.MongoDatabase;
 
 public class Patch {
 
 	public static void main(String[] args) throws UnknownHostException,
 			MongoException {
 		// TODO Auto-generated method stub
-		Mongo mg = new Mongo("192.168.16.71");
-		for (String name : mg.getDatabaseNames()) {
-			System.out.println("dbName:" + name);
-		}
-		DB db = mg.getDB("pmdata_2014");
-		for (String name : db.getCollectionNames()) {
-			System.out.println("collectionName: " + name);
-		}
-		DBCollection pm = db.getCollection("pm");
-		DBCollection pm2014 = db.getCollection("pm_2014");
-
-		DBCursor objpm = pm.find();
+		MongoClient client = new MongoClient("127.0.0.1");
+		MongoDatabase db = client.getDatabase("pm");
+		MongoCollection pm = db.getCollection("pm25original");
+		MongoCollection pmWithLocation = db.getCollection("pm_with_loc");
+		MongoCursor objpm = pm.find().iterator();
 
 		while (objpm.hasNext()) {
 			BasicDBObject info = (BasicDBObject) objpm.next();
@@ -61,8 +54,8 @@ public class Patch {
 				System.out.println("读取文件内容出错");
 				e.printStackTrace();
 			}
-			pm2014.save(info);
-			System.out.println("修改后信息：" + info);
+			//pmWithLocation.save(info);
+			//System.out.println("修改后信息：" + info);
 		}
 
 	}

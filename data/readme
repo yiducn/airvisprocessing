@@ -1,0 +1,6 @@
+allStationCode: all station codes used
+allStationCodeCurrentDB: station codes contained in current db (by 2015-9-14)//截至到14日所有
+allStationCodeFromPM25: station code parsed from pm25.in on 2015-9-14
+city.txt: old location of monitor stations
+data.txt: all stations, also not the full set
+station_names.json:source of "allStationCodeFromPM25".
