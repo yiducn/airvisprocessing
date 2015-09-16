@@ -9,7 +9,6 @@ import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
 import org.apache.commons.io.FileUtils;
 import org.apache.http.HttpEntity;
-import org.apache.http.StatusLine;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.utils.URIBuilder;
@@ -23,6 +22,8 @@ import org.json.JSONObject;
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -32,10 +33,11 @@ import java.util.List;
  */
 public class AllParsers {
     static final String PATH = "/Users/yidu/dev/airvisprocessing/data/";
-    static final String GoogleAPIKEY = "AIzaSyBLUzY64m0XvjJVb6nDS8m_KRJy3niuYAc";
+    static final String API_KEY_GOOGLE = "AIzaSyBLUzY64m0XvjJVb6nDS8m_KRJy3niuYAc";
+    static final String API_KEY_BAIDU = "YoV0MPZh0xZKucqPM1gA19Zp";
 
     public static void main(String[] args){
-        geoCodingGoogle();
+        geoEncodingBaidu();
     }
 
     /**
@@ -50,14 +52,14 @@ public class AllParsers {
         MongoCollection location = db.getCollection("location");
         MongoCollection locWithLL = db.getCollection("loc_ll_google");
         MongoCursor cursor = location.find().iterator();
-        GeoApiContext context = new GeoApiContext().setApiKey(GoogleAPIKEY);
+        GeoApiContext context = new GeoApiContext().setApiKey(API_KEY_GOOGLE);
         Document d;
         while(cursor.hasNext()){
             d = new Document();
             try {
                 Document obj = (Document)cursor.next();
                 GeocodingResult[] results = GeocodingApi.geocode(context,
-                        obj.get("city")+" "+obj.get("name")).await();
+                        obj.get("city") + " " + obj.get("name")).await();
                 d.append("_id",obj.get("_id")).
                         append("city",obj.get("city")).
                         append("name",obj.get("name")).
@@ -72,37 +74,90 @@ public class AllParsers {
     }
 
     /**
-     * This method tries to geocode using Baidu Geocode API
+     * This method tries to geocode using Baidu Geocode API,
+     * This method rely on the collection location,
+     * which has all the stations' name and city
      */
     private static void geoEncodingBaidu(){
-        try {
-            CloseableHttpClient client = HttpClients.createDefault();
-            URI url = new URIBuilder().setScheme("http").setHost("api.map.baidu.com")
-                    .setPath("/geocoder/v2").setParameter("address","china").setParameter("output","json")
-                    .setParameter("ak","YoV0MPZh0xZKucqPM1gA19Zp").build();
-            HttpGet httpget = new HttpGet(url);
-            System.out.println(url.toString());
-            CloseableHttpResponse response = client.execute(httpget);
-
-            HttpEntity entity = response.getEntity();
-            StatusLine statusLine = response.getStatusLine();
-            System.out.println(statusLine.getStatusCode()+":"+statusLine.getReasonPhrase());
-            if (entity != null) {
-                System.out.println(EntityUtils.toString(entity));
-                long len = entity.getContentLength();
-                if (len != -1 && len < 2048) {
-                    System.out.println(EntityUtils.toString(entity));
-                } else {
-                    // Stream content out
-                    System.out.println("null");
+        MongoClient client = new MongoClient("127.0.0.1");
+        MongoDatabase db = client.getDatabase("pm");
+        MongoCollection location = db.getCollection("location");
+        MongoCollection locWithLL = db.getCollection("loc_ll_g_b");
+        MongoCursor cursor = location.find().iterator();
+        Document d;
+        JSONObject resultLL;
+        CloseableHttpClient http = HttpClients.createDefault();
+        while(cursor.hasNext()){
+            try {
+                Document obj = (Document)cursor.next();
+                URI url = new URIBuilder().setScheme("http")
+                        .setHost("api.map.baidu.com")
+                        .setPath("/geocoder/v2/")
+                        .setParameter("address",obj.get("city")+" "+obj.get("name"))
+                        .setParameter("output", "json")
+                        .setParameter("ak",API_KEY_BAIDU).build();
+                HttpGet httpget = new HttpGet(url);
+                CloseableHttpResponse response = http.execute(httpget);
+                HttpEntity entity = response.getEntity();
+                if (entity != null) {
+                    String s = EntityUtils.toString(entity);
+                    JSONObject result = new JSONObject(s);
+                    JSONObject resultAll = result.getJSONObject("result");
+                    resultLL = resultAll.getJSONObject("location");
+                    d = new Document();
+                    d.append("_id",obj.get("_id")).
+                            append("city", obj.get("city")).
+                            append("name", obj.get("name")).
+                            append("code", obj.get("code"));
+                    d.append("lat", resultLL.getDouble("lat"));
+                    d.append("lon", resultLL.getDouble("lng"));
+                    locWithLL.insertOne(d);
+                    EntityUtils.consume(entity);
+                    response.close();
                 }
+            }catch(URISyntaxException e2){
+                e2.printStackTrace();
+            }catch(IOException e){
+                e.printStackTrace();
+            }catch(Exception e){
+                e.printStackTrace();
             }
-            EntityUtils.consume(entity);
-        }catch(URISyntaxException e2){
-            e2.printStackTrace();
-        }catch(IOException e){
-            e.printStackTrace();
         }
+    }
+
+    /**
+     *
+     */
+    private static void preProcess(){
+        MongoClient client = new MongoClient("127.0.0.1");
+        MongoDatabase db = client.getDatabase("pm");
+        MongoCollection original = db.getCollection("pm25inoriginal");
+        MongoCollection preprocess = db.getCollection("pm_preProcess");
+        MongoCursor cur = original.find().iterator();
+        Document insert;
+        SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z' Z");
+//        int count = 0;
+        while(cur.hasNext()){
+            Document obj = (Document)cur.next();
+            insert = new Document();
+            insert.append("_id", obj.get("_id"))
+                    .append("aqi", obj.get("aqi"))
+                    .append("co", obj.get("co"))
+                    .append("no2", obj.get("no2"))
+                    .append("o3", obj.get("o3"))
+                    .append("pm10",obj.get("pm10"))
+                    .append("pm25",obj.get("pm2_5"))
+                    .append("so2",obj.get("so2"))
+                    .append("code", obj.get("station_code"));
+            try {
+                insert.append("time", df.parse(obj.get("time_point").toString()+" +0800"));
+            } catch (ParseException e) {
+                e.printStackTrace();
+                continue;
+            }
+            preprocess.insertOne(insert);
+        }
+
     }
 
     /**
