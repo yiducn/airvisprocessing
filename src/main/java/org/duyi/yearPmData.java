@@ -22,15 +22,8 @@ import com.mongodb.Mongo;
 public class yearPmData {
 
 	public static void main(String[] args) throws UnknownHostException {
-		// TODO Auto-generated method stub
-		Mongo mg71 = new Mongo("192.168.16.71");
-		for (String name : mg71.getDatabaseNames()) {
-			System.out.println("dbName:" + name);
-		}
+		Mongo mg71 = new Mongo("localhost");
 		DB db71 = mg71.getDB("pmdata_2014");
-		for (String name : db71.getCollectionNames()) {
-			System.out.println("collectionName: " + name);
-		}
 		DBCollection users71 = db71.getCollection("pm_2014");
 		DBCollection users_year = db71.getCollection("pmdata_year");
 		BasicDBObject cond = new BasicDBObject();
