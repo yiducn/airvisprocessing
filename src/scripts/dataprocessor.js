@@ -1,7 +1,13 @@
 /**
  * Created by yidu on 9/21/15.
+ * procedure:
+ * geoCodingGoogle()
+ * geoEncodingBaidu()
+ * preProcess() from pm25original to pm_preProcess
+ * then generate pmdata_year month day
  */
 
+//generate pmdata_year
 db.pm_preProcess.aggregate([
     {
         $match:{
@@ -10,7 +16,9 @@ db.pm_preProcess.aggregate([
     },
     {
 
-        $group:{_id:"$code",
+        $group:{_id:{year:{$year:"$time"}, code:"$code"},
+            year:{$first: {$year:"$time"}},
+            time:{$first:"$time"},
             code:{$first:"$code"},
             aqi:{$avg:"$aqi"},
             co:{$avg:"$co"},
@@ -26,13 +34,11 @@ db.pm_preProcess.aggregate([
     }
 ]);
 
-//从preProcess中生成日平均
-//注意,这里存在时区的bug
-//https://jira.mongodb.org/browse/SERVER-6310
 db.pm_preProcess.aggregate([
     {
 
-        $group:{_id:{day:{$dayOfMonth:"$time"}, month:{$month:"$time"}, year:{$year:"$time"}, code:"$code"},
+        $group:{_id:{year:{$year:"$time"}, code:"$code"},
+            year:{$first: {$year:"$time"}},
             time:{$first:"$time"},
             code:{$first:"$code"},
             aqi:{$avg:"$aqi"},
@@ -45,13 +51,9 @@ db.pm_preProcess.aggregate([
         }
     },
     {
-        $out:"pmdata_day"
+        $out:"pmdata_year"
     }
-]
-    ,
-    {
-        allowDiskUse: true
-    });
+]);
 
 /**
  * 获得所有数据的按月平均
@@ -103,6 +105,32 @@ db.pm_preProcess.aggregate([
     }
 ]);
 
+//从preProcess中生成日平均
+//注意,这里存在时区的bug
+//https://jira.mongodb.org/browse/SERVER-6310
+db.pm_preProcess.aggregate([
+        {
+
+            $group:{_id:{day:{$dayOfMonth:"$time"}, month:{$month:"$time"}, year:{$year:"$time"}, code:"$code"},
+                time:{$first:"$time"},
+                code:{$first:"$code"},
+                aqi:{$avg:"$aqi"},
+                co:{$avg:"$co"},
+                no2:{$avg:"$no2"},
+                o3:{$avg:"$o3"},
+                pm10:{$avg:"$pm10"},
+                pm25:{$avg:"$pm25"},
+                so2:{$avg:"$so2"}
+            }
+        },
+        {
+            $out:"pmdata_day"
+        }
+    ]
+    ,
+    {
+        allowDiskUse: true
+    });
 
 //从月平均中,根据指定城市获取结果,所有结果取平均
 /**返回结果
@@ -188,3 +216,18 @@ db.pmdata_day.aggregate(
         }
     ]
 );
+
+/**
+ * insert some missing data into original collection.
+ * 因为:数据存储时一部分存在了mongodb集群,另一部分处在了16.70,存在一些交叉
+ **/
+db.pm2.find(
+    {
+        time_point:
+        {
+            $in:[/^2014-05-28/,/^2014-05-29/,/^2014-05-30/,/^2014-05-31/, /^2014-06/,/^2014-07/,/^2014-08/,/^2014-09/]
+        }
+    }
+).forEach(function(doc){
+    db.pm25inoriginal.insert(doc);
+});

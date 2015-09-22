@@ -30,6 +30,11 @@ import java.util.List;
 
 /**
  * Created by yidu on 9/15/15.
+ * procedure:
+ * geoCodingGoogle()
+ * geoEncodingBaidu()
+ * preProcess() from pm25original to pm_preProcess
+ * then generate pmdata_year month day
  */
 public class AllParsers {
     static final String PATH = "/Users/yidu/dev/airvisprocessing/data/";
@@ -37,7 +42,7 @@ public class AllParsers {
     static final String API_KEY_BAIDU = "YoV0MPZh0xZKucqPM1gA19Zp";
 
     public static void main(String[] args){
-        geoEncodingBaidu();
+        preProcess();
     }
 
     /**
