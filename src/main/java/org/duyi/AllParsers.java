@@ -24,9 +24,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 
 /**
  * Created by yidu on 9/15/15.
@@ -100,7 +98,7 @@ public class AllParsers {
                         .setPath("/geocoder/v2/")
                         .setParameter("address",obj.get("city")+" "+obj.get("name"))
                         .setParameter("output", "json")
-                        .setParameter("ak",API_KEY_BAIDU).build();
+                        .setParameter("ak", API_KEY_BAIDU).build();
                 HttpGet httpget = new HttpGet(url);
                 CloseableHttpResponse response = http.execute(httpget);
                 HttpEntity entity = response.getEntity();
@@ -141,6 +139,8 @@ public class AllParsers {
         MongoCursor cur = original.find().iterator();
         Document insert;
         SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z' Z");
+        Calendar c = Calendar.getInstance(TimeZone.getTimeZone("GMT+08:00"));
+        Date d;
 //        int count = 0;
         while(cur.hasNext()){
             Document obj = (Document)cur.next();
@@ -155,7 +155,24 @@ public class AllParsers {
                     .append("so2",obj.get("so2"))
                     .append("code", obj.get("station_code"));
             try {
-                insert.append("time", df.parse(obj.get("time_point").toString()+" +0800"));
+                d = df.parse(obj.get("time_point").toString()+" +0800");
+                insert.append("time", d);
+                //insert day of week by gmt+8
+                c.setTime(d);
+//                        * @see #SUNDAY 1
+//                          * @see #MONDAY
+//                        * @see #TUESDAY
+//                        * @see #WEDNESDAY
+//                        * @see #THURSDAY
+//                        * @see #FRIDAY
+//                        * @see #SATURDAY
+                insert.append("dayofweekbj", c.get(Calendar.DAY_OF_WEEK));
+                insert.append("hourofdayjb", c.get(Calendar.HOUR_OF_DAY));
+                insert.append("dayofmonthbj", c.get(Calendar.DAY_OF_MONTH));
+                insert.append("dayofyearbj", c.get(Calendar.DAY_OF_YEAR));
+                insert.append("weekofyearbj", c.get(Calendar.WEEK_OF_YEAR));
+                insert.append("weekofmonthbj", c.get(Calendar.WEEK_OF_MONTH));
+
             } catch (ParseException e) {
                 e.printStackTrace();
                 continue;
@@ -164,6 +181,7 @@ public class AllParsers {
         }
 
     }
+
 
     /**
      * write station city, name, code to db
