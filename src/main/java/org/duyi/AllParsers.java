@@ -4,9 +4,11 @@ import com.google.maps.GeoApiContext;
 import com.google.maps.GeocodingApi;
 import com.google.maps.model.GeocodingResult;
 import com.mongodb.MongoClient;
+import com.mongodb.MongoWriteException;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.model.IndexOptions;
 import org.apache.commons.io.FileUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -40,7 +42,8 @@ public class AllParsers {
     static final String API_KEY_BAIDU = "YoV0MPZh0xZKucqPM1gA19Zp";
 
     public static void main(String[] args){
-        preProcess();
+//        preProcess();
+        removeDuplicate();
     }
 
     /**
@@ -182,6 +185,30 @@ public class AllParsers {
 
     }
 
+    /**
+     * removeDuplicate
+     * by add a unique index
+     */
+    private static void removeDuplicate(){
+        MongoClient client = new MongoClient("127.0.0.1");
+        MongoDatabase db = client.getDatabase("pm");
+        MongoCollection preprocess = db.getCollection("pm_preProcess");
+        MongoCollection process = db.getCollection("pmProcess");
+        IndexOptions option = new IndexOptions();
+        option.unique(true);
+        process.createIndex(new Document().append("time",1).append("code",1), option);
+        MongoCursor cur = preprocess.find().iterator();
+
+        while(cur.hasNext()){
+            Document obj = (Document)cur.next();
+            try {
+                process.insertOne(obj);
+            }catch(MongoWriteException e){
+                //duplicate error
+                System.out.println(obj.toString());
+            }
+        }
+    }
 
     /**
      * write station city, name, code to db
