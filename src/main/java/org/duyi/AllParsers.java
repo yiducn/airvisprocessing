@@ -40,12 +40,53 @@ public class AllParsers {
     static final String PATH = "/Users/yidu/dev/airvisprocessing/data/";
     static final String API_KEY_GOOGLE = "AIzaSyBLUzY64m0XvjJVb6nDS8m_KRJy3niuYAc";
     static final String API_KEY_BAIDU = "YoV0MPZh0xZKucqPM1gA19Zp";
+    static final String PATH_METEOROLOGICAL_STATIONS = "/Users/yidu/快盘/dataset/气象数据/中国地面气象站逐小时观测资料/stations.csv";
 
     public static void main(String[] args){
 //        preProcess();
-        removeDuplicate();
+//        removeDuplicate();
+        meteorologicalStationsToMongo();
     }
 
+    /**
+     * 将气象站数据处理后写入数据库
+     */
+    private static void meteorologicalStationsToMongo(){
+        MongoClient client = new MongoClient("127.0.0.1");
+        MongoDatabase db = client.getDatabase("pm");
+        MongoCollection weatherStation = db.getCollection("weather_station");
+        try {
+            List<String> stations = FileUtils.readLines(new File(PATH_METEOROLOGICAL_STATIONS));
+            StringTokenizer st;
+            Document d ;
+            for(int i = 1; i < stations.size(); i ++){
+                String stationInfo = stations.get(i);
+                st = new StringTokenizer(stationInfo, ",");
+//                System.out.println(stationInfo);
+                d = new Document().append("province", st.nextToken())
+                        .append("id", st.nextToken())
+                        .append("name", st.nextToken())
+                        .append("type", getTypeMeteorologicalStations(st.nextToken()))
+                        .append("lat", Double.parseDouble(st.nextToken()))
+                        .append("lon", Double.parseDouble(st.nextToken()))
+                        .append("altPressure", Double.parseDouble(st.nextToken()))
+                        .append("altObservation", Double.parseDouble(st.nextToken()));
+                weatherStation.insertOne(d);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    private static int getTypeMeteorologicalStations(String type){
+        if(type.equals("基本站"))
+            return 1;
+        else if(type.equals("基准站"))
+            return 2;
+        else if(type.equals("一般站"))
+            return 3;
+        else
+            return 0;
+    }
     /**
      * This method geocode all stations using Google Geocode API,
      * then store the result into loc_ll_google.
