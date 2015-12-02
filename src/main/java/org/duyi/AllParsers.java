@@ -41,11 +41,62 @@ public class AllParsers {
     static final String API_KEY_GOOGLE = "AIzaSyBLUzY64m0XvjJVb6nDS8m_KRJy3niuYAc";
     static final String API_KEY_BAIDU = "YoV0MPZh0xZKucqPM1gA19Zp";
     static final String PATH_METEOROLOGICAL_STATIONS = "/Users/yidu/快盘/dataset/气象数据/中国地面气象站逐小时观测资料/stations.csv";
+    static final String PATH_CITY_CODE = "/Users/yidu/快盘/dataset/路网数据/citycode.csv";
 
     public static void main(String[] args){
 //        preProcess();
 //        removeDuplicate();
-        meteorologicalStationsToMongo();
+//        meteorologicalStationsToMongo();
+//        geoCodingGoogle();
+        insertCityCode();
+    }
+
+    /**
+     * 根据城市名添加城市代码
+     * 此方法应该在geocoding之后调用
+     * https://zh.wikipedia.org/wiki/%E4%B8%AD%E5%8D%8E%E4%BA%BA%E6%B0%91%E5%85%B1%E5%92%8C%E5%9B%BD%E8%A1%8C%E6%94%BF%E5%8C%BA%E5%88%92%E4%BB%A3%E7%A0%81_(5%E5%8C%BA)
+     * note:使用的citycode文件,手动添加了一些城市站点,
+     * 存在这样的情况,不同的地方,使用相同的standardcode,例如胶州和胶南
+     */
+    private static void insertCityCode(){
+        //get city codes
+        HashMap<String, Integer> nameCode = new HashMap<String, Integer>();
+        try {
+            List<String> list = FileUtils.readLines(new File(PATH_CITY_CODE));
+
+            for(int i = 1; i < list.size(); i ++){
+                StringTokenizer st = new StringTokenizer(list.get(i), ",");
+                int code = Integer.parseInt(st.nextToken());
+                String name = st.nextToken();
+                if(name.endsWith("市"))
+                    name = name.substring(0, name.length()-1);
+                nameCode.put(name, code);
+            }
+        }catch(IOException e){
+            e.printStackTrace();
+        }
+//        int index = 0;
+//        for(String key : nameCode.keySet()){
+//            System.out.println(key + ":"+nameCode.get(key)+ ":"+ (index++));
+//
+//        }
+        MongoClient client = new MongoClient("127.0.0.1");
+        MongoDatabase db = client.getDatabase("pm");
+        MongoCollection locWithLL = db.getCollection("loc_ll_google");
+        MongoCursor cursor = locWithLL.find().iterator();
+        Document d;
+        while(cursor.hasNext()){
+            d = (Document)cursor.next();
+            Integer code = nameCode.get(d.getString("city"));
+            if(code == null){
+                System.out.println(d.getString("city"));
+                continue;
+            }else{
+                locWithLL.updateOne(new Document("_id", d.get("_id")),
+                        new Document("$set", new Document("standardcode", code.intValue())));
+            }
+
+        }
     }
 
     /**
