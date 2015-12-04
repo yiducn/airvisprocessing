@@ -42,17 +42,20 @@ public class AllParsers {
     static final String API_KEY_BAIDU = "YoV0MPZh0xZKucqPM1gA19Zp";
     static final String PATH_METEOROLOGICAL_STATIONS = "/Users/yidu/快盘/dataset/气象数据/中国地面气象站逐小时观测资料/stations.csv";
     static final String PATH_CITY_CODE = "/Users/yidu/快盘/dataset/路网数据/citycode.csv";
+    static final String PATH_PROVINCE_CODE  =   "/Users/yidu/dev/airvisprocessing/src/main/java/org/duyi/provincecode.csv";
 
     public static void main(String[] args){
 //        preProcess();
 //        removeDuplicate();
 //        meteorologicalStationsToMongo();
 //        geoCodingGoogle();
-        insertCityCode();
+//        insertCityCode();
+//        insertProvinceName();
+        updateProvinceName();
     }
 
     /**
-     * 根据城市名添加城市代码
+     * 根据城市名添加城市代码,添加到loc_ll_google中
      * 此方法应该在geocoding之后调用
      * https://zh.wikipedia.org/wiki/%E4%B8%AD%E5%8D%8E%E4%BA%BA%E6%B0%91%E5%85%B1%E5%92%8C%E5%9B%BD%E8%A1%8C%E6%94%BF%E5%8C%BA%E5%88%92%E4%BB%A3%E7%A0%81_(5%E5%8C%BA)
      * note:使用的citycode文件,手动添加了一些城市站点,
@@ -100,6 +103,74 @@ public class AllParsers {
     }
 
     /**
+     * 将省份名称添加到loc_ll_google中
+     * 在insertCityCode后调用
+     */
+    private static void insertProvinceName(){
+        //get city codes
+        HashMap<Integer, String> provCode = new HashMap<Integer, String>();
+        try {
+            List<String> list = FileUtils.readLines(new File(PATH_PROVINCE_CODE));
+
+            for(int i = 0; i < list.size(); i ++){
+                StringTokenizer st = new StringTokenizer(list.get(i), ",");
+                st.nextToken();//name
+                st.nextToken();//total code
+                int code = Integer.parseInt(st.nextToken());
+                String name = st.nextToken();
+                provCode.put(code, name);
+//                System.out.println(code+":"+name);
+            }
+        }catch(IOException e){
+            e.printStackTrace();
+        }
+
+        MongoClient client = new MongoClient("127.0.0.1");
+        MongoDatabase db = client.getDatabase("pm");
+        MongoCollection locWithLL = db.getCollection("loc_ll_google");
+        MongoCursor cursor = locWithLL.find().iterator();
+        Document d;
+        while(cursor.hasNext()){
+            d = (Document)cursor.next();
+            int pCode = d.getInteger("standardcode")/10000;
+            String province = provCode.get(pCode);
+//            System.out.println(province);
+            locWithLL.updateOne(new Document("_id", d.get("_id")),
+                    new Document("$set", new Document("province", province)));
+        }
+    }
+
+    /**
+     * 将省份名称添加到pmdata_month中
+     * 在insertProvinceName后调用
+     */
+    private static void updateProvinceName(){
+        //get city codes
+        HashMap<String, String> provCode = new HashMap<String, String>();
+        MongoClient client = new MongoClient("127.0.0.1");
+        MongoDatabase db = client.getDatabase("pm");
+        MongoCollection locWithLL = db.getCollection("loc_ll_google");
+        MongoCursor cursor = locWithLL.find().iterator();
+        Document d;
+        while(cursor.hasNext()){
+            d = (Document)cursor.next();
+            provCode.put(d.getString("code"), d.getString("province"));
+//            System.out.println(d.getString("code") + ":" + d.getString("province"));
+        }
+
+        MongoCollection month = db.getCollection("pmdata_month");
+        cursor = month.find().iterator();
+        while(cursor.hasNext()){
+            d = (Document)cursor.next();
+            String code = d.getString("code");
+            String province = provCode.get(code);
+//            System.out.println(province);
+            month.updateOne(new Document("_id", d.get("_id")),
+                    new Document("$set", new Document("province", province)));
+        }
+    }
+
+    /**
      * 将气象站数据处理后写入数据库
      */
     private static void meteorologicalStationsToMongo(){
@@ -143,6 +214,8 @@ public class AllParsers {
      * then store the result into loc_ll_google.
      * This method rely on the collection location,
      * which has all the stations' name and city
+     * note: 20151204 有八个站点geocoding没有结果,需要手工补齐
+     * 2873A没有信息
      */
     private static void geoCodingGoogle(){
         MongoClient client = new MongoClient("127.0.0.1");
@@ -156,14 +229,84 @@ public class AllParsers {
             d = new Document();
             try {
                 Document obj = (Document)cursor.next();
+                String code = obj.getString("code");
                 GeocodingResult[] results = GeocodingApi.geocode(context,
                         obj.get("city") + " " + obj.get("name")).await();
-                d.append("_id",obj.get("_id")).
-                        append("city",obj.get("city")).
-                        append("name",obj.get("name")).
-                        append("code",obj.get("code"));
-                d.append("lat", results[0].geometry.location.lat);
-                d.append("lon", results[0].geometry.location.lng);
+                if(results.length == 0){
+                    if(code.equals("1798A")){
+                        //马鞍山 湖东路四小
+                        d.append("_id",obj.get("_id")).
+                                append("city",obj.get("city")).
+                                append("name",obj.get("name")).
+                                append("code", obj.get("code"));
+                        d.append("lat", 31.641768);
+                        d.append("lon", 118.508472);
+                    }else if(code.equals("1950A")){
+                        //石嘴山 红果子镇惠新街
+                        d.append("_id",obj.get("_id")).
+                                append("city",obj.get("city")).
+                                append("name",obj.get("name")).
+                                append("code", obj.get("code"));
+                        d.append("lat", 39.150654);
+                        d.append("lon", 106.696737);
+                    }else if(code.equals("1966A")){
+                        //胶南 2号子站
+                        d.append("_id",obj.get("_id")).
+                                append("city",obj.get("city")).
+                                append("name",obj.get("name")).
+                                append("code", obj.get("code"));
+                        d.append("lat", 35.999624);
+                        d.append("lon", 119.897872);
+                    }else if(code.equals("1981A")){
+                        //文登 文登市环保局
+                        d.append("_id",obj.get("_id")).
+                                append("city",obj.get("city")).
+                                append("name",obj.get("name")).
+                                append("code", obj.get("code"));
+                        d.append("lat", 37.197512);
+                        d.append("lon", 122.045160);
+                    }else if(code.equals("2208A")){
+                        //阜新 长青街
+                        d.append("_id",obj.get("_id")).
+                                append("city",obj.get("city")).
+                                append("name",obj.get("name")).
+                                append("code", obj.get("code"));
+                        d.append("lat", 41.772827);
+                        d.append("lon", 123.484008);
+                    }else if(code.equals("2693A")){
+                        //博州 博乐市西郊区
+                        d.append("_id",obj.get("_id")).
+                                append("city",obj.get("city")).
+                                append("name",obj.get("name")).
+                                append("code", obj.get("code"));
+                        d.append("lat", 44.895150);
+                        d.append("lon", 82.052164);
+                    }else if(code.equals("2694A")){
+                        //博州 市环保局
+                        d.append("_id",obj.get("_id")).
+                                append("city",obj.get("city")).
+                                append("name",obj.get("name")).
+                                append("code", obj.get("code"));
+                        d.append("lat", 44.900614);
+                        d.append("lon", 82.085888);
+                    }else if(code.equals("2697A")){
+                        //克州 市人民政府
+                        d.append("_id",obj.get("_id")).
+                                append("city",obj.get("city")).
+                                append("name",obj.get("name")).
+                                append("code", obj.get("code"));
+                        d.append("lat", 39.716400);
+                        d.append("lon", 76.168263);
+                    }
+                }else {
+                    d.append("_id", obj.get("_id")).
+                            append("city", obj.get("city")).
+                            append("name", obj.get("name")).
+                            append("code", obj.get("code"));
+                    d.append("lat", results[0].geometry.location.lat);
+                    d.append("lon", results[0].geometry.location.lng);
+                }
+
                 locWithLL.insertOne(d);
             }catch(Exception e){
                 e.printStackTrace();
