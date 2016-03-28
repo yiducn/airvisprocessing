@@ -21,7 +21,10 @@ import org.bson.Document;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.text.ParseException;
@@ -35,8 +38,11 @@ import java.util.*;
  * geoEncodingBaidu()
  * preProcess() from pm25original to pm_preProcess
  * then generate pmdata_year month day
+ * 2016年3月23日,创建新的数据库airdb,同时维护气象数据和pm数据
  */
-public class AllParsers {
+//db.pm_data.createIndex({time:1, code:1},{unique:true}) 创建唯一索引
+
+public class AllParsersAir {
     static final String PATH = "/Users/yidu/dev/airvisprocessing/data/";
     static final String API_KEY_GOOGLE = "AIzaSyBLUzY64m0XvjJVb6nDS8m_KRJy3niuYAc";
     static final String API_KEY_BAIDU = "YoV0MPZh0xZKucqPM1gA19Zp";
@@ -45,8 +51,8 @@ public class AllParsers {
     static final String PATH_PROVINCE_CODE  =   "/Users/yidu/dev/airvisprocessing/src/main/java/org/duyi/provincecode.csv";
 
     public static void main(String[] args){
-        preProcess();
-//        removeDuplicate();
+//        preProcess();
+        removeDuplicate();
 //        meteorologicalStationsToMongo();
 //        geoCodingGoogle();
 //        insertCityCode();
@@ -379,8 +385,8 @@ public class AllParsers {
      */
     private static void preProcess(){
         MongoClient client = new MongoClient("127.0.0.1");
-        MongoDatabase db = client.getDatabase("pm");
-        MongoCollection original = db.getCollection("pm25inoriginal");
+        MongoDatabase db = client.getDatabase("airvis");
+        MongoCollection original = db.getCollection("pm_data");
         MongoCollection preprocess = db.getCollection("pm_preProcess");
         MongoCursor cur = original.find().iterator();
         Document insert;
@@ -434,7 +440,7 @@ public class AllParsers {
      */
     private static void removeDuplicate(){
         MongoClient client = new MongoClient("127.0.0.1");
-        MongoDatabase db = client.getDatabase("pm");
+        MongoDatabase db = client.getDatabase("airvis");
         MongoCollection preprocess = db.getCollection("pm_preProcess");
         MongoCollection process = db.getCollection("pmProcess");
         IndexOptions option = new IndexOptions();
