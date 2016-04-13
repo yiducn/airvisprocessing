@@ -60,6 +60,11 @@ db.pm_preProcess.aggregate([
  */
 db.pm_preProcess.aggregate([
     {
+        $match:{
+            pm25:{$ne:0}
+        }
+    },
+    {
 
         $group:{_id:{month:{$month:"$time"}, year:{$year:"$time"}, code:"$code"},
             time:{$first:"$time"},
@@ -79,17 +84,16 @@ db.pm_preProcess.aggregate([
     }
 ]);
 //获取某个范围内的按月平均
-db.pm_preProcess.aggregate([
+db.pm_data.aggregate([
     {
         $match:{
-            time:{$gt:ISODate("2014-09-14T13:00:00.000Z")}
+            pm25:{$ne:0}
         }
     },
     {
 
         $group:{_id:{month:{$month:"$time"}, year:{$year:"$time"}, code:"$code"},
             time:{$first:"$time"},
-            month:{$first: {$month:"$time"}},
             code:{$first:"$code"},
             aqi:{$avg:"$aqi"},
             co:{$avg:"$co"},
@@ -108,7 +112,12 @@ db.pm_preProcess.aggregate([
 //从preProcess中生成日平均
 //注意,这里存在时区的bug
 //https://jira.mongodb.org/browse/SERVER-6310
-db.pm_preProcess.aggregate([
+db.pm_data.aggregate([
+        {
+            $match:{
+                pm25:{$ne:0}
+            }
+        },
         {
 
             $group:{_id:{day:{$dayOfMonth:"$time"}, month:{$month:"$time"}, year:{$year:"$time"}, code:"$code"},
@@ -131,6 +140,28 @@ db.pm_preProcess.aggregate([
     {
         allowDiskUse: true
     });
+
+//计算风速的方法
+db.meteo_data.aggregate([
+        {
+
+            $group:{_id:{day:{$dayOfMonth:"$time"}, month:{$month:"$time"}, year:{$year:"$time"}, code:"$usaf"},
+                time:{$first:"$time"},
+                usaf:{$first:"$usaf"},
+                dir:{$avg:"$dir"},
+                spd:{$avg:"$spd"},
+                temp:{$avg:"$temp"}
+            }
+        },
+        {
+            $out:"meteodata_day"
+        }
+    ]
+    ,
+    {
+        allowDiskUse: true
+    });
+
 
 //从月平均中,根据指定城市获取结果,所有结果取平均
 /**返回结果

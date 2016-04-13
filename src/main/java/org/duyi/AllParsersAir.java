@@ -52,12 +52,15 @@ public class AllParsersAir {
 
     public static void main(String[] args){
 //        preProcess();
-        removeDuplicate();
+//        removeDuplicate();
 //        meteorologicalStationsToMongo();
 //        geoCodingGoogle();
 //        insertCityCode();
 //        insertProvinceName();
-//        updateProvinceName();
+        updateProvinceName();
+        updateCityName();
+//        updateCityName4Daily();
+//        interpolateDailyData();
     }
 
     /**
@@ -154,9 +157,9 @@ public class AllParsersAir {
         //get city codes
         HashMap<String, String> provCode = new HashMap<String, String>();
         MongoClient client = new MongoClient("127.0.0.1");
-        MongoDatabase db = client.getDatabase("pm");
-        MongoCollection locWithLL = db.getCollection("loc_ll_google");
-        MongoCursor cursor = locWithLL.find().iterator();
+        MongoDatabase db = client.getDatabase("airdb");
+        MongoCollection stations = db.getCollection("pm_stations");
+        MongoCursor cursor = stations.find().iterator();
         Document d;
         while(cursor.hasNext()){
             d = (Document)cursor.next();
@@ -168,11 +171,70 @@ public class AllParsersAir {
         cursor = month.find().iterator();
         while(cursor.hasNext()){
             d = (Document)cursor.next();
-            String code = d.getString("code");
+            String code = ((Document)d.get("_id")).getString("code");
             String province = provCode.get(code);
 //            System.out.println(province);
             month.updateOne(new Document("_id", d.get("_id")),
                     new Document("$set", new Document("province", province)));
+        }
+    }
+    /**
+     * 将城市名称添加到pmdata_month中
+     * 在后调用
+     */
+    private static void updateCityName(){
+        //get city codes
+        HashMap<String, String> cityCode = new HashMap<String, String>();
+        MongoClient client = new MongoClient("127.0.0.1");
+        MongoDatabase db = client.getDatabase("airdb");
+        MongoCollection stations = db.getCollection("pm_stations");
+        MongoCursor cursor = stations.find().iterator();
+        Document d;
+        while(cursor.hasNext()){
+            d = (Document)cursor.next();
+            cityCode.put(d.getString("code"), d.getString("city"));
+//            System.out.println(d.getString("code") + ":" + d.getString("city"));
+        }
+
+        MongoCollection month = db.getCollection("pmdata_month");
+        cursor = month.find().iterator();
+        while(cursor.hasNext()){
+            d = (Document)cursor.next();
+            String code = ((Document)d.get("_id")).getString("code");
+            String province = cityCode.get(code);
+//            System.out.println(province);
+            month.updateOne(new Document("_id", d.get("_id")),
+                    new Document("$set", new Document("city", province)));
+        }
+    }
+
+    /**
+     * 将城市名称添加到pmdata_day中
+     * 在后调用
+     */
+    private static void updateCityName4Daily(){
+        //get city codes
+        HashMap<String, String> cityCode = new HashMap<String, String>();
+        MongoClient client = new MongoClient("127.0.0.1");
+        MongoDatabase db = client.getDatabase("airdb");
+        MongoCollection stations = db.getCollection("pm_stations");
+        MongoCursor cursor = stations.find().iterator();
+        Document d;
+        while(cursor.hasNext()){
+            d = (Document)cursor.next();
+            cityCode.put(d.getString("code"), d.getString("city"));
+//            System.out.println(d.getString("code") + ":" + d.getString("city"));
+        }
+
+        MongoCollection month = db.getCollection("pmdata_day");
+        cursor = month.find().iterator();
+        while(cursor.hasNext()){
+            d = (Document)cursor.next();
+            String code = ((Document)d.get("_id")).getString("code");
+            String province = cityCode.get(code);
+//            System.out.println(province);
+            month.updateOne(new Document("_id", d.get("_id")),
+                    new Document("$set", new Document("city", province)));
         }
     }
 
@@ -225,9 +287,9 @@ public class AllParsersAir {
      */
     private static void geoCodingGoogle(){
         MongoClient client = new MongoClient("127.0.0.1");
-        MongoDatabase db = client.getDatabase("pm");
+        MongoDatabase db = client.getDatabase("airdb");
         MongoCollection location = db.getCollection("location");
-        MongoCollection locWithLL = db.getCollection("loc_ll_google");
+        MongoCollection locWithLL = db.getCollection("pm_stations");
         MongoCursor cursor = location.find().iterator();
         GeoApiContext context = new GeoApiContext().setApiKey(API_KEY_GOOGLE);
         Document d;
@@ -469,8 +531,8 @@ public class AllParsersAir {
             String line = br.readLine();
 
             MongoClient client = new MongoClient("127.0.0.1");
-            MongoDatabase db = client.getDatabase("pm");
-            MongoCollection location = db.getCollection("location");
+            MongoDatabase db = client.getDatabase("airdb");
+            MongoCollection location = db.getCollection("pm_stations");
             Document doc = null;
             ArrayList<String> station = new ArrayList<String>();
 
@@ -612,5 +674,40 @@ public class AllParsersAir {
             }
         }
         client.close();
+    }
+
+    static void interpolateDailyData(){
+//        HashMap<String, String> codeAName = parseLocationNames();
+//        Calendar c = Calendar.getInstance(TimeZone.getTimeZone("GMT+08:00"));
+//        MongoClient client = new MongoClient("127.0.0.1");
+//        MongoDatabase db = client.getDatabase("airdb");
+//        MongoCollection pm = db.getCollection("pmdata_day");
+//        Document sort = new Document();
+//        sort.put("code", -1);
+//        sort.put("time", 1);
+//        MongoCursor cur = pm.find().sort(sort).iterator();
+//        Document pre = null;
+//        while(cur.hasNext()){
+//            if(pre == null){
+//                pre = (Document)cur.next();
+//                continue;
+//            }
+//            Document current = (Document)cur.next();
+//            c.setTime(current.getDate("time"));
+//            int newDay = c.get(Calendar.DAY_OF_YEAR);
+//            c.setTime(pre.getDate("time"));
+//            int preDay = c.get(Calendar.DAY_OF_YEAR);
+//
+//            if(newDay - preDay > 1){
+//                for(int i = 0; i < (newDay-preDay-1); i ++) {
+//                    Document d = pre;
+//                    ((Document)d.get("_id")).
+//                }
+//                d.put()
+//            }
+//            pre = current;
+//
+//        }
+//        client.close();
     }
 }
