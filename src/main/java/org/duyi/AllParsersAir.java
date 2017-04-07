@@ -3,6 +3,7 @@ package org.duyi;
 import com.google.maps.GeoApiContext;
 import com.google.maps.GeocodingApi;
 import com.google.maps.model.GeocodingResult;
+import com.mongodb.BasicDBObject;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoWriteException;
 import com.mongodb.client.MongoCollection;
@@ -10,6 +11,7 @@ import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.IndexOptions;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang.time.DateUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -57,11 +59,84 @@ public class AllParsersAir {
 //        geoCodingGoogle();
 //        insertCityCode();
 //        insertProvinceName();
-        updateProvinceName();
-        updateCityName();
+//        updateProvinceName();
+//        updateCityName();
 //        updateCityName4Daily();
 //        interpolateDailyData();
+
+//        updateClusterLL();
+//        parseDailyTime();
+        try {
+            getBeijingToFile();
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+
     }
+
+    /**
+     * 专门找出北京的数据,保存到json文件中
+     * 用于KrigingCalendar,的数据生成
+     * @throws Exception
+     */
+    private static void getBeijingToFile() throws  Exception{
+//       db.pm_data.find({$and:[{"code":{$in:["1001A"]}}, {"time":{$gt:ISODate("2014-12-31T23:59:59.312Z")}},{"time":{$lt:ISODate("2015-12-31T23:59:59.312Z")}}]})
+// {"time":{$gt:ISODate("2014-12-31T23:59:59.312Z")}},{"time":{$lt:ISODate("2015-12-31T23:59:59.312Z")}}]})
+
+        MongoClient client = new MongoClient("127.0.0.1");
+        MongoDatabase db = client.getDatabase("airdb");
+
+
+        MongoCollection locations = db.getCollection("pm_location");
+
+        HashMap<String, Double> codeLat = new HashMap<String, Double>();
+        HashMap<String, Double> codeLon = new HashMap<String, Double>();
+        String[] cityList = {"1001A", "1002A","1003A","1004A","1005A","1006A","1007A","1008A","1009A", "1010A","1011A","1012A"};
+        JSONArray locationData = new JSONArray();
+        for(String city : cityList){
+            MongoCursor cursor = locations.find(new Document("code", city)).iterator();
+            Document d = (Document) cursor.next();
+            codeLat.put(city, d.getDouble("lat"));
+            codeLon.put(city, d.getDouble("lon"));
+            JSONObject obj = new JSONObject();
+            obj.put("code", city);
+            obj.put("lat",  d.getDouble("lat"));
+            obj.put("lon", d.getDouble("lon"));
+            locationData.put(obj);
+
+        }
+        FileUtils.write(new File("/Users/yidu/Downloads/location.json"), locationData.toString());
+
+
+
+        MongoCollection pmdata = db.getCollection("pm_data");
+        ArrayList list = new ArrayList();
+        SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        list.add(new Document("time", new BasicDBObject("$gt",  df.parse("2014-12-31 23:59:59"))));
+        list.add(new Document("time", new BasicDBObject("$lt",  df.parse("2015-12-31 23:59:59"))));
+
+
+        list.add(new Document("code", new Document("$in", Arrays.asList(cityList))));
+        Document find = new Document("$and", list);
+        System.out.println(find.toJson());
+        MongoCursor cursor = pmdata.find(find).sort(new Document("time", 1)).iterator();
+        Document d;
+        JSONArray result = new JSONArray();
+        while(cursor.hasNext()) {
+            JSONObject obj = new JSONObject();
+            d = (Document) cursor.next();
+            obj.put("time", d.getDate("time").getTime());
+            obj.put("code", d.getString("code"));
+            obj.put("lat", codeLat.get(d.getString("code")));
+            obj.put("lon", codeLon.get(d.getString("code")));
+            obj.put("value", d.getInteger("pm25"));
+            result.put(obj);
+        }
+        FileUtils.write(new File("/Users/yidu/Downloads/result.json"), result.toString());
+
+    }
+
+
 
     /**
      * 根据城市名添加城市代码,添加到loc_ll_google中
@@ -178,6 +253,64 @@ public class AllParsersAir {
                     new Document("$set", new Document("province", province)));
         }
     }
+
+    /**
+     *  将cluster数据库中加入ll
+     */
+    private static void updateClusterLL(){
+        //get city codes
+        HashMap<String, Double> provLon = new HashMap<String, Double>();
+        HashMap<String, Double> provLat = new HashMap<String, Double>();
+        MongoClient client = new MongoClient("127.0.0.1");
+        MongoDatabase db = client.getDatabase("airdb");
+        MongoCollection stations = db.getCollection("pm_stations");
+        MongoCursor cursor = stations.find().iterator();
+        Document d;
+        while(cursor.hasNext()){
+            d = (Document)cursor.next();
+            provLon.put(d.getString("code"), d.getDouble("lon"));
+            provLat.put(d.getString("code"), d.getDouble("lat"));
+//            System.out.println(d.getString("code") + ":" + d.getString("province"));
+        }
+
+        MongoCollection month = db.getCollection("cluster");
+        cursor = month.find().iterator();
+        while(cursor.hasNext()){
+            d = (Document)cursor.next();
+            String code = d.getString("code");
+            double lat = provLat.get(code);
+            double lon = provLon.get(code);
+            month.updateOne(new Document("code", code),
+                    new Document("$set", new Document("lat", lat)));
+            month.updateOne(new Document("code", code),
+                    new Document("$set", new Document("lon", lon)));
+        }
+    }
+
+    private static void updateStationWidthCluster(){
+        //get city codes
+        HashMap<String, String> clusterIds = new HashMap<String, String>();
+        MongoClient client = new MongoClient("127.0.0.1");
+        MongoDatabase db = client.getDatabase("airdb");
+        MongoCollection clusters = db.getCollection("cluster");
+        MongoCursor cursor = clusters.find().iterator();
+        Document d;
+        while(cursor.hasNext()){
+            d = (Document)cursor.next();
+            clusterIds.put(d.getString("code"), d.getString("clusterid"));
+        }
+
+        MongoCollection month = db.getCollection("pm_stations");
+        cursor = month.find().iterator();
+        while(cursor.hasNext()){
+            d = (Document)cursor.next();
+            String code = d.getString("code");
+            String id = clusterIds.get(code);
+            month.updateOne(new Document("code", code),
+                    new Document("$set", new Document("clusterid", id)));
+        }
+    }
+
     /**
      * 将城市名称添加到pmdata_month中
      * 在后调用
@@ -709,5 +842,29 @@ public class AllParsersAir {
 //
 //        }
 //        client.close();
+    }
+
+    /**
+     * 把daily数据库的表的time,小时数取整
+     */
+    static void parseDailyTime(){
+        //get city codes
+        HashMap<String, String> cityCode = new HashMap<String, String>();
+        MongoClient client = new MongoClient("127.0.0.1");
+        MongoDatabase db = client.getDatabase("airdb");
+        MongoCollection daily = db.getCollection("pmdata_day");
+
+        MongoCursor cursor = daily.find().iterator();
+        while(cursor.hasNext()){
+            Document d = (Document)cursor.next();
+            Date date = d.getDate("time");
+            Date newDate = new Date(date.getTime()/(1000*60*60*24)*(1000*60*60*24));
+//            System.out.println(newDate+":"+date.getTime()/(1000*60*60*24)*(1000*60*60*24)+":"+date);
+
+//            String code = ((Document)d.get("_id")).getString("code");
+//            String province = cityCode.get(code);
+            daily.updateOne(new Document("_id", d.get("_id")),
+                    new Document("$set", new Document("time", newDate)));
+        }
     }
 }
